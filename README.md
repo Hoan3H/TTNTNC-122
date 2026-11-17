@@ -3,7 +3,8 @@
 Python project for an extended Tic-Tac-Toe game with configurable board size
 and winning line length. Players can place a piece in any empty cell.
 
-The game engine is implemented. AI agents, training, evaluation and the console
+The game engine, baseline Random/Rule/Minimax agents, and single-match logging
+are implemented. Tournament evaluation, DQN, MCTS, training and the console
 demo remain scaffolds.
 
 ## Requirements
@@ -11,7 +12,7 @@ demo remain scaffolds.
 Python 3.10 or later. The engine and its tests use only the standard library.
 Currently tested with Python 3.13.1.
 
-## Run engine tests
+## Run tests
 
 From this directory:
 
