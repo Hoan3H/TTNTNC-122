@@ -1,4 +1,6 @@
 import json
+from dataclasses import replace
+from datetime import date
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -123,6 +125,39 @@ class EvaluationTests(unittest.TestCase):
             output_dir = Path(temp_dir) / "empty"
             save_logs((), output_dir)
             self.assertEqual(load_logs(output_dir), ())
+
+    def test_date_scoped_logs_use_separate_files_and_round_trip(self):
+        first = winning_match()
+        second = replace(first, match_id="match-2")
+        next_day = replace(first, match_id="match-3")
+        first_day = date(2026, 11, 17)
+        second_day = date(2026, 11, 18)
+
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "logs"
+            save_logs((first,), output_dir, day=first_day)
+            save_logs(
+                load_logs(output_dir, day=first_day) + (second,),
+                output_dir,
+                day=first_day,
+            )
+            save_logs((next_day,), output_dir, day=second_day)
+
+            self.assertEqual(
+                load_logs(output_dir, day=first_day), (first, second)
+            )
+            self.assertEqual(load_logs(output_dir, day=second_day), (next_day,))
+            self.assertTrue(
+                (output_dir / "matches_2026-11-17.jsonl").is_file()
+            )
+            self.assertTrue(
+                (output_dir / "manifest_2026-11-18.json").is_file()
+            )
+
+    def test_date_scoped_logs_reject_non_date_values(self):
+        with TemporaryDirectory() as temp_dir:
+            with self.assertRaises(ValueError):
+                save_logs((), Path(temp_dir), day="2026-11-17")
 
     def test_load_logs_rejects_action_that_does_not_replay(self):
         log = winning_match()

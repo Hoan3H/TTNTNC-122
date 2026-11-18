@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import date
 import json
 import math
 from pathlib import Path
@@ -38,7 +39,7 @@ class AgentEntry:
 class EvaluationConfig:
     games_per_pair: int = 100
     seeds: tuple[int, ...] = (42, 43, 44)
-    split: Literal["validation", "test"] = "validation"
+    split: Literal["validation", "test", "interactive"] = "validation"
     mode: Literal["default", "fixed_time", "fixed_simulations"] = "default"
     confidence_level: float = 0.95
     bootstrap_samples: int = 2000
@@ -171,11 +172,17 @@ def summarize_results(logs: tuple[MatchLog, ...], config: EvaluationConfig) -> d
     raise NotImplementedError
 
 
-def save_logs(logs: tuple[MatchLog, ...], output_dir: Path) -> None:
+def save_logs(
+    logs: tuple[MatchLog, ...],
+    output_dir: Path,
+    *,
+    day: date | None = None,
+) -> None:
     if not isinstance(output_dir, Path):
         raise ValueError("output_dir must be a Path.")
     if not isinstance(logs, tuple) or any(not isinstance(log, MatchLog) for log in logs):
         raise ValueError("logs must be a tuple of MatchLog objects.")
+    manifest_path, matches_path = _log_paths(output_dir, day)
 
     seen_ids = set()
     serialized_logs = []
@@ -216,18 +223,19 @@ def save_logs(logs: tuple[MatchLog, ...], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     if not output_dir.is_dir():
         raise NotADirectoryError(f"Log output path is not a directory: {output_dir}")
-    (output_dir / _MANIFEST_NAME).write_text(manifest_text + "\n", encoding="utf-8")
-    (output_dir / _MATCHES_NAME).write_text(matches_text, encoding="utf-8")
+    manifest_path.write_text(manifest_text + "\n", encoding="utf-8")
+    matches_path.write_text(matches_text, encoding="utf-8")
 
 
-def load_logs(directory: Path) -> tuple[MatchLog, ...]:
+def load_logs(
+    directory: Path, *, day: date | None = None
+) -> tuple[MatchLog, ...]:
     if not isinstance(directory, Path):
         raise ValueError("directory must be a Path.")
     if not directory.is_dir():
         raise FileNotFoundError(f"Log directory does not exist: {directory}")
 
-    manifest_path = directory / _MANIFEST_NAME
-    matches_path = directory / _MATCHES_NAME
+    manifest_path, matches_path = _log_paths(directory, day)
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
@@ -275,6 +283,19 @@ def load_logs(directory: Path) -> tuple[MatchLog, ...]:
     return tuple(loaded_logs)
 
 
+def _log_paths(directory: Path, day: date | None) -> tuple[Path, Path]:
+    if day is None:
+        manifest_name = _MANIFEST_NAME
+        matches_name = _MATCHES_NAME
+    else:
+        if type(day) is not date:
+            raise ValueError("day must be a datetime.date or None.")
+        day_suffix = day.isoformat()
+        manifest_name = f"manifest_{day_suffix}.json"
+        matches_name = f"matches_{day_suffix}.jsonl"
+    return directory / manifest_name, directory / matches_name
+
+
 def run_ablation(kind: Literal['alpha_beta', 'mcts_simulations', 'guided_mcts'], game_config: GameConfig, entries: tuple[AgentEntry, ...], config: EvaluationConfig, states: tuple[GameState, ...]=()) -> dict[str, object]:
     raise NotImplementedError
 
@@ -294,8 +315,8 @@ def _validate_protocol(protocol: EvaluationConfig) -> None:
         or any(type(seed) is not int for seed in protocol.seeds)
     ):
         raise ValueError("seeds must be a non-empty tuple of integers.")
-    if protocol.split not in ("validation", "test"):
-        raise ValueError("split must be 'validation' or 'test'.")
+    if protocol.split not in ("validation", "test", "interactive"):
+        raise ValueError("split must be 'validation', 'test' or 'interactive'.")
     if protocol.mode not in ("default", "fixed_time", "fixed_simulations"):
         raise ValueError("Unsupported evaluation mode.")
     if (
